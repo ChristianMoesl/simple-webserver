@@ -4,6 +4,7 @@ import java.util.Optional;
 
 public enum ContentType {
     HTML("text/html"),
+    TEXT("text/plain"),
     GIF("image/gif");
 
     private final String description;
@@ -13,9 +14,18 @@ public enum ContentType {
     }
 
     static Optional<ContentType> forPath(Path path) {
-        if (path.endsWith("html"))
+        Path fileNamePath = path.getFileName();
+
+        if (fileNamePath == null)
+            return Optional.empty();
+
+        String fileName = fileNamePath.toString();
+
+        if (fileName.endsWith("html"))
             return Optional.of(ContentType.HTML);
-        else if (path.endsWith("gif"))
+        else if (fileName.endsWith("txt"))
+            return Optional.of(ContentType.TEXT);
+        else if (fileName.endsWith("gif"))
             return Optional.of(ContentType.GIF);
         else
             return Optional.empty();

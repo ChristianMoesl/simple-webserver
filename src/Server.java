@@ -1,24 +1,27 @@
+import javax.swing.text.AbstractDocument;
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 
 public class Server {
 
     private final InetSocketAddress endPoint;
-    private final Pattern requestPattern = Pattern.compile("([A-Z]+) (/[a-zA-Z0-9]*) HTTP/1.1");
+    private final Pattern requestPattern = Pattern.compile("([A-Z]+) (/[a-zA-Z0-9.]*) HTTP/1.1");
 
     private final String webFolder;
     private ServerSocket socket;
     private Hashtable<String, Controller> controllers = new Hashtable<>();
-    private Response response = new Response();
+    private Optional<Response> response = Optional.empty();
 
     public Server(String hostname, int port, String webFolder) {
         this.webFolder = webFolder;
@@ -33,65 +36,55 @@ public class Server {
         return Optional.of(controllers.getOrDefault(path, null));
     }
 
-    private boolean serveFilesFor(String path) {
-        String searchPath = webFolder + path;
-
-        // look into directory
-        if (path.charAt(path.length() - 1) == '/') {
-            Path index = Paths.get(searchPath + "index.html");
-            if (Files.exists(index)) {
-                try {
-                    response = new Response(StatusCode.OK, Files.lines(index).toString());
-                } catch (IOException e) {
-                    response = new Response();
-                }
-                return true;
-            }
-        } else {
-            Path filePath = Paths.get(searchPath);
-
-            if (Files.exists(filePath)) {
-                ContentType.forPath(filePath).ifPresentOrElse(contentType -> {
-                    try {
-                        response = new Response();
-                        response.setStatus(StatusCode.OK);
-                        response.setContentType(contentType);
-                        response.setContent(Files.readAllBytes(filePath));
-                    } catch (IOException e) {
-                        response = new Response();
-                    }
-                },() -> {
-                    });
-
-
-                return true;
-            }
+    private boolean serveFilesFor(String path, RequestType requestType) {
+        if (requestType != RequestType.GET) {
+            response = Optional.of(new Response());
+            return true;
         }
 
-        return false;
+        String searchPath = webFolder + path;
+
+        Path file;
+        if (path.charAt(path.length() - 1) == '/')
+            file = Paths.get(searchPath + "index.html");
+        else
+            file = Paths.get(searchPath);
+
+        if (!Files.exists(file))
+            return false;
+
+        ContentType.forPath(file).ifPresentOrElse(contentType -> {
+            System.out.println("Serve static file " + file);
+            try {
+                Response resp = new Response();
+                resp.setStatus(StatusCode.OK);
+                resp.setContentType(contentType);
+                resp.setContent(Files.readAllBytes(file));
+                response = Optional.of(resp);
+            } catch (IOException e) {
+                response = Optional.empty();
+            }
+        },() -> response = Optional.empty());
+
+        return response.isPresent();
     }
 
-    private boolean executeControllerFor(String path) {
+    private boolean executeControllerFor(String path, RequestType requestType) {
         Optional<Controller> controller = findForPath(path);
         boolean served = controller.isPresent();
 
         controller.ifPresentOrElse(c -> {
             Response resp = new Response();
-            c.get(new Request(RequestType.GET, path), resp);
-            response = Optional.of(resp.toString());
-
-            System.out.println(response.get());
-
-            System.out.println("Sending html response");
-        }, () -> {
-            response = Optional.of("Error");
-        });
+            System.out.println("Executing controller \"" + c.getClass().getSimpleName() + "\" for request");
+            c.get(new Request(requestType, path), resp);
+            response = Optional.of(resp);
+        }, () -> response = Optional.empty());
 
         return served;
     }
 
-    private void serveNotFoundFor(String path) {
-        response = Optional.of(new Response().toString());
+    private void serveNotFoundFor(String path, RequestType requestType) {
+        response = Optional.of(new Response());
     }
 
     private void parseRequest(List<String> request) {
@@ -99,14 +92,16 @@ public class Server {
             String line = request.get(0);
             Matcher matcher = requestPattern.matcher(line);
             if (matcher.matches()) {
-                String requestType = matcher.group(1);
+                Optional<RequestType> requestType = RequestType.forString(matcher.group(1));
                 String path = matcher.group(2);
 
-                System.out.println("Incoming Request: " +requestType + " "+ path);
+                requestType.ifPresent(rqType -> {
+                    System.out.println("Incoming Request: " + rqType + " "+ path);
 
-                if (!serveFilesFor(path))
-                    if (!executeControllerFor(path))
-                        serveNotFoundFor(path);
+                    if (!serveFilesFor(path, rqType))
+                        if (!executeControllerFor(path, rqType))
+                            serveNotFoundFor(path, rqType);
+                });
             } else {
                 System.out.println("Request  \"" + line + "\" not supported");
             }
@@ -122,7 +117,6 @@ public class Server {
 
             while ((line = br.readLine()) != null && !line.isEmpty()) {
                 lines.add(line);
-                System.out.println(line);
             }
 
             return lines;
@@ -132,9 +126,12 @@ public class Server {
     }
 
     private void sendResponse(OutputStream outputStream) {
-        PrintWriter writer = new PrintWriter(outputStream);
-        writer.print(response.get());
-        writer.flush();
+        try {
+            outputStream.write(response.get().getBytes());
+            outputStream.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void run() throws IOException {
@@ -143,16 +140,14 @@ public class Server {
 
         while (true) {
             try (Socket activeSocket = socket.accept()) {
-                while (!activeSocket.isClosed()) {
-                    List<String> request = receiveRequest(activeSocket.getInputStream());
+                List<String> request = receiveRequest(activeSocket.getInputStream());
 
-                    parseRequest(request);
+                parseRequest(request);
 
-                    if (response.isPresent()) {
-                        sendResponse(activeSocket.getOutputStream());
+                if (response.isPresent()) {
+                    sendResponse(activeSocket.getOutputStream());
 
-                        response = Optional.empty();
-                    }
+                    response = Optional.empty();
                 }
             }
         }

@@ -1,6 +1,23 @@
 <html>
 <body>
 <h1>Welcome to our Homepage!</h1>
+<p>Server time: <span id="server-time"></span></p>
 <img src="tenor.gif" style="height:600px"/>
+<script>
+function updateServerTime() {
+    var xmlhttp = new XMLHttpRequest();
+    var url = "time";
+
+    xmlhttp.onreadystatechange = function () {
+        if (this.readyState == 4 && this.status == 200) {
+            document.getElementById("server-time").innerText = this.responseText;
+        }
+    };
+    xmlhttp.open("GET", url, true);
+    xmlhttp.send();
+}
+updateServerTime();
+setInterval(updateServerTime, 2000);
+</script>
 </body>
 </html>

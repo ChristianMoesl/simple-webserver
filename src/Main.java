@@ -8,7 +8,7 @@ public class Main {
         }
 
         Server server = new Server(args[0], Integer.valueOf(args[1]), args[2]);
-        server.register(new RootSite());
+        server.register(new TimeRestController());
         server.run();
     }
 }
