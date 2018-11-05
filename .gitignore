@@ -24,3 +24,6 @@ hs_err_pid*
 
 # intellij specific files
 .idea/workspace.xml
+
+# macOS files
+.DS_Store
