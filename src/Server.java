@@ -33,7 +33,7 @@ public class Server {
     }
 
     private Optional<Controller> findForPath(String path) {
-        return Optional.of(controllers.getOrDefault(path, null));
+        return Optional.ofNullable(controllers.getOrDefault(path, null));
     }
 
     private boolean serveFilesFor(String path, RequestType requestType) {
