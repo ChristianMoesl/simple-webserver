@@ -1,3 +1,5 @@
+import javafx.util.Pair;
+
 import javax.swing.text.AbstractDocument;
 import java.io.*;
 import java.net.InetSocketAddress;
@@ -12,16 +14,18 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static java.util.Optional.*;
+
 
 public class Server {
 
     private final InetSocketAddress endPoint;
-    private final Pattern requestPattern = Pattern.compile("([A-Z]+) (/[a-zA-Z0-9.]*) HTTP/1.1");
+    private final Pattern requestPattern = Pattern.compile("([A-Z]+) (/[a-zA-Z0-9//.]*) HTTP/1.1");
 
     private final String webFolder;
     private ServerSocket socket;
     private Hashtable<String, Controller> controllers = new Hashtable<>();
-    private Optional<Response> response = Optional.empty();
+    private Optional<Response> response = empty();
 
     public Server(String hostname, int port, String webFolder) {
         this.webFolder = webFolder;
@@ -32,123 +36,146 @@ public class Server {
         controllers.put(controller.getPath(), controller);
     }
 
-    private Optional<Controller> findForPath(String path) {
-        return Optional.ofNullable(controllers.getOrDefault(path, null));
+    private Optional<Controller> findForPath(Path path) {
+        return ofNullable(controllers.getOrDefault(path.toString(), null));
     }
 
-    private boolean serveFilesFor(String path, RequestType requestType) {
+    private void serveFilesFor(Path path, RequestType requestType) {
+        // Allow only get requests for static files
         if (requestType != RequestType.GET) {
-            response = Optional.of(new Response());
-            return true;
+            response = of(Response.ERROR_METHOD_NOT_ALLOWED);
+            return;
         }
 
         String searchPath = webFolder + path;
 
+        // Calculate path for file to be served
         Path file;
-        if (path.charAt(path.length() - 1) == '/')
+        if (Files.isDirectory(path))
             file = Paths.get(searchPath + "index.html");
         else
             file = Paths.get(searchPath);
 
         if (!Files.exists(file))
-            return false;
+            return;
 
         ContentType.forPath(file).ifPresentOrElse(contentType -> {
             System.out.println("Serve static file " + file);
             try {
                 Response resp = new Response();
-                resp.setStatus(StatusCode.OK);
                 resp.setContentType(contentType);
                 resp.setContent(Files.readAllBytes(file));
-                response = Optional.of(resp);
+                response = of(resp);
             } catch (IOException e) {
-                response = Optional.empty();
+                response = of(Response.ERROR_NOT_FOUND);
             }
-        },() -> response = Optional.empty());
-
-        return response.isPresent();
+        },() -> response = of(Response.ERROR_NOT_FOUND));
     }
 
-    private boolean executeControllerFor(String path, RequestType requestType) {
+    private void executeControllerFor(Path path, RequestType requestType) {
         Optional<Controller> controller = findForPath(path);
-        boolean served = controller.isPresent();
 
-        controller.ifPresentOrElse(c -> {
+        controller.ifPresent(c -> {
             Response resp = new Response();
             System.out.println("Executing controller \"" + c.getClass().getSimpleName() + "\" for request");
-            c.get(new Request(requestType, path), resp);
-            response = Optional.of(resp);
-        }, () -> response = Optional.empty());
 
-        return served;
+            if (requestType == RequestType.GET)
+                c.get(new Request(requestType, path), resp);
+            else if (requestType == RequestType.POST)
+                c.post(new Request(requestType, path), resp);
+            else
+                resp = Response.ERROR_METHOD_NOT_ALLOWED;
+
+            response = of(resp);
+        });
     }
 
-    private void serveNotFoundFor(String path, RequestType requestType) {
-        response = Optional.of(new Response());
+    private void serveNotFoundFor(Path path, RequestType requestType) {
+        response = of(Response.ERROR_NOT_FOUND);
     }
 
-    private void parseRequest(List<String> request) {
+    private Optional<Pair<Path, RequestType>> parseRequest(List<String> request) {
+        Optional result = empty();
+
         if (request.size() > 0) {
             String line = request.get(0);
+
             Matcher matcher = requestPattern.matcher(line);
+
             if (matcher.matches()) {
                 Optional<RequestType> requestType = RequestType.forString(matcher.group(1));
-                String path = matcher.group(2);
+                Path path = Paths.get(matcher.group(2)).normalize();
 
-                requestType.ifPresent(rqType -> {
-                    System.out.println("Incoming Request: " + rqType + " "+ path);
+                if (requestType.isPresent()) {
+                    System.out.println("Incoming Request: " + requestType.get() + " "+ path);
 
-                    if (!serveFilesFor(path, rqType))
-                        if (!executeControllerFor(path, rqType))
-                            serveNotFoundFor(path, rqType);
-                });
-            } else {
-                System.out.println("Request  \"" + line + "\" not supported");
+                    result = of(new Pair<Path, RequestType>(path, requestType.get()));
+                }
             }
         }
+
+        return result;
+    }
+
+    private void processRequest(Pair<Path, RequestType> request) {
+        serveFilesFor(request.getKey(), request.getValue());
+
+        if (!response.isPresent())
+            executeControllerFor(request.getKey(), request.getValue());
+
+        if (!response.isPresent())
+            serveNotFoundFor(request.getKey(), request.getValue());
     }
 
     private List<String> receiveRequest(InputStream inputStream) {
+        List<String> lines = new ArrayList<>();
+
         try {
             BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
 
-            List<String> lines = new ArrayList<>();
-            String line;
+            String line = br.readLine();
 
-            while ((line = br.readLine()) != null && !line.isEmpty()) {
+            while (line != null && !line.isEmpty()) {
                 lines.add(line);
+
+                line = br.readLine();
             }
 
             return lines;
         } catch (IOException exception) {
-            return Collections.emptyList();
+            return lines;
         }
     }
 
-    private void sendResponse(OutputStream outputStream) {
+    private void sendResponse(OutputStream outputStream, Response response) throws IOException {
+        outputStream.write(response.getBytes());
+        outputStream.flush();
+    }
+
+    public void run() {
         try {
-            outputStream.write(response.get().getBytes());
-            outputStream.flush();
+            socket = new ServerSocket();
+            socket.bind(endPoint, 100);
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("Cannot bind to endpoint: " + endPoint.getHostName() + ":" + endPoint.getPort());
+            System.exit(-1);
         }
-    }
-
-    public void run() throws IOException {
-        socket = new ServerSocket();
-        socket.bind(endPoint, 100);
 
         while (true) {
             try (Socket activeSocket = socket.accept()) {
                 List<String> request = receiveRequest(activeSocket.getInputStream());
 
-                parseRequest(request);
+                parseRequest(request).ifPresentOrElse(this::processRequest, () -> {
+                    response = of(Response.ERROR_BAD_REQUEST);
+                });
 
                 if (response.isPresent()) {
-                    sendResponse(activeSocket.getOutputStream());
+                    sendResponse(activeSocket.getOutputStream(), response.get());
 
-                    response = Optional.empty();
+                    response = empty();
                 }
+            } catch (IOException e) {
+                System.err.println("Failed to handle connection");
             }
         }
     }

@@ -1,5 +1,5 @@
-import java.nio.file.Path;
 import java.util.Optional;
+import static java.util.Optional.*;
 
 public enum RequestType {
     GET,
@@ -7,10 +7,10 @@ public enum RequestType {
 
     static Optional<RequestType> forString(String string) {
         if (string.equals("GET"))
-            return Optional.of(RequestType.GET);
+            return of(RequestType.GET);
         else if (string.equals("POST"))
-            return Optional.of(RequestType.POST);
+            return of(RequestType.POST);
         else
-            return Optional.empty();
+            return empty();
     }
 }

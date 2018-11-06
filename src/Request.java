@@ -1,15 +1,15 @@
-
+import java.nio.file.Path;
 
 public class Request {
-    private String path;
+    private Path path;
     private RequestType type;
 
-    public Request(RequestType type, String path) {
+    public Request(RequestType type, Path path) {
         this.type = type;
         this.path = path;
     }
 
-    public String getPath() {
+    public Path getPath() {
         return path;
     }
 

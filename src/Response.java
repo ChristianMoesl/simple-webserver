@@ -1,23 +1,44 @@
-import javax.swing.text.AbstractDocument;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public class Response {
     private StatusCode status = StatusCode.ERROR_NOT_FOUND;
-    private ContentType type = ContentType.HTML;
-    private byte[] content = ("<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n" +
-            "<html>\n" +
-            "<head>\n" +
-            "   <title>404 Not Found</title>\n" +
-            "</head>\n" +
-            "<body>\n" +
-            "   <h1>Not Found</h1>\n" +
-            "   <p>The requested URL was not found on this server.</p>\n" +
-            "</body>\n" +
-            "</html>").getBytes();
+    private ContentType type = ContentType.TEXT;
+    private byte[] content = new byte[0];
 
-    public Response() {}
+    public static final Response ERROR_BAD_REQUEST;
+    public static final Response ERROR_NOT_FOUND;
+    public static final Response ERROR_METHOD_NOT_ALLOWED;
+
+    public static byte[] generateErrorPage(int code, String msg) {
+        return ("<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "   <title>" + Integer.toString(code) + " " + msg + "</title>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "   <h1>" + msg + "</h1>\n" +
+                "</body>\n" +
+                "</html>").getBytes();
+    }
+
+    static {
+        ERROR_BAD_REQUEST = new Response();
+        ERROR_BAD_REQUEST.setStatus(StatusCode.ERROR_BAD_REQUEST);
+        ERROR_BAD_REQUEST.setContentType(ContentType.HTML);
+        ERROR_BAD_REQUEST.setContent(generateErrorPage(StatusCode.ERROR_BAD_REQUEST.code, StatusCode.ERROR_BAD_REQUEST.message));
+
+        ERROR_NOT_FOUND = new Response();
+        ERROR_NOT_FOUND.setStatus(StatusCode.ERROR_NOT_FOUND);
+        ERROR_NOT_FOUND.setContentType(ContentType.HTML);
+        ERROR_NOT_FOUND.setContent(generateErrorPage(StatusCode.ERROR_NOT_FOUND.code, StatusCode.ERROR_NOT_FOUND.message));
+
+        ERROR_METHOD_NOT_ALLOWED = new Response();
+        ERROR_METHOD_NOT_ALLOWED.setStatus(StatusCode.ERROR_METHOD_NOT_ALLOWED);
+        ERROR_METHOD_NOT_ALLOWED.setContentType(ContentType.HTML);
+        ERROR_METHOD_NOT_ALLOWED.setContent(generateErrorPage(StatusCode.ERROR_METHOD_NOT_ALLOWED.code, StatusCode.ERROR_METHOD_NOT_ALLOWED.message));
+    }
+
+    public Response() { }
 
     public void setStatus(StatusCode code) {
         status = code;
@@ -32,15 +53,22 @@ public class Response {
     }
 
     public byte[] getBytes() {
-        String header = new StringBuilder()
+        StringBuilder builder = new StringBuilder()
                 .append("HTTP/1.1 ")
                 .append(status.toString())
-                .append("\nContent-Length: ").append(content.length).append('\n')
-                .append("Content-Type: ")
-                .append(type.toString())
-                .append("\nConnection: close")
-                .append("\n\n")
-                .toString();
+                .append("\nContent-Length: ")
+                .append(content.length)
+                .append('\n');
+
+        if (content.length > 0) {
+            builder.append("Content-Type: ")
+                   .append(type.toString())
+                   .append('\n');
+        }
+
+        String header = builder.append("Connection: close")
+                               .append("\n\n")
+                               .toString();
 
         ByteBuffer buffer = ByteBuffer.allocate(header.getBytes().length + content.length);
 

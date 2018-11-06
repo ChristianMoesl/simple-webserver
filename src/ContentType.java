@@ -1,6 +1,7 @@
-import javax.swing.text.html.Option;
 import java.nio.file.Path;
 import java.util.Optional;
+
+import static java.util.Optional.*;
 
 public enum ContentType {
     HTML("text/html"),
@@ -17,18 +18,18 @@ public enum ContentType {
         Path fileNamePath = path.getFileName();
 
         if (fileNamePath == null)
-            return Optional.empty();
+            return empty();
 
         String fileName = fileNamePath.toString();
 
         if (fileName.endsWith("html"))
-            return Optional.of(ContentType.HTML);
+            return of(ContentType.HTML);
         else if (fileName.endsWith("txt"))
-            return Optional.of(ContentType.TEXT);
+            return of(ContentType.TEXT);
         else if (fileName.endsWith("gif"))
-            return Optional.of(ContentType.GIF);
+            return of(ContentType.GIF);
         else
-            return Optional.empty();
+            return empty();
     }
 
     @Override
