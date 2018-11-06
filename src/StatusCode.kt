@@ -15,14 +15,12 @@ enum class StatusCode private constructor(internal val code: Int, internal val m
     companion object {
 
         internal fun parse(text: String): Optional<StatusCode> {
-            return if (text == "200")
-                Optional.of(StatusCode.OK)
-            else if (text == "400")
-                Optional.of(StatusCode.ERROR_BAD_REQUEST)
-            else if (text == "404")
-                Optional.of(StatusCode.ERROR_NOT_FOUND)
-            else
-                Optional.empty()
+            return when (text) {
+                "200" -> Optional.of(StatusCode.OK)
+                "400" -> Optional.of(StatusCode.ERROR_BAD_REQUEST)
+                "404" -> Optional.of(StatusCode.ERROR_NOT_FOUND)
+                else -> Optional.empty()
+            }
         }
     }
 }
