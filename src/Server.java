@@ -1,18 +1,13 @@
-import javafx.util.Pair;
-
-import javax.swing.text.AbstractDocument;
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static java.util.Optional.*;
 
@@ -94,7 +89,7 @@ public class Server {
         response = of(Response.ERROR_NOT_FOUND);
     }
 
-    private Optional<Pair<Path, RequestType>> parseRequest(List<String> request) {
+    private Optional<Request> parseRequest(List<String> request) {
         Optional result = empty();
 
         if (request.size() > 0) {
@@ -109,7 +104,7 @@ public class Server {
                 if (requestType.isPresent()) {
                     System.out.println("Incoming Request: " + requestType.get() + " "+ path);
 
-                    result = of(new Pair<Path, RequestType>(path, requestType.get()));
+                    result = of(new Request(requestType.get(), path));
                 }
             }
         }
@@ -117,14 +112,14 @@ public class Server {
         return result;
     }
 
-    private void processRequest(Pair<Path, RequestType> request) {
-        serveFilesFor(request.getKey(), request.getValue());
+    private void processRequest(Request request) {
+        serveFilesFor(request.getPath(), request.getType());
 
         if (!response.isPresent())
-            executeControllerFor(request.getKey(), request.getValue());
+            executeControllerFor(request.getPath(), request.getType());
 
         if (!response.isPresent())
-            serveNotFoundFor(request.getKey(), request.getValue());
+            serveNotFoundFor(request.getPath(), request.getType());
     }
 
     private List<String> receiveRequest(InputStream inputStream) {
